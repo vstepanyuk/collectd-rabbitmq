@@ -25,8 +25,18 @@ PLUGIN_CONFIG = {
     'password': 'guest',
     'host': 'localhost',
     'port': 15672,
-    'realm': 'RabbitMQ Management'
+    'realm': 'RabbitMQ Management',
+    'collectQueuesStats': True,
+    'collectExchangesStats': True
 }
+
+
+def str2bool(value):
+    """
+    Convert string to boolean
+    """
+    collectd.info("Value: %s" % value.lower())
+    return False if value.lower() == "false" else True
 
 
 def configure(config_values):
@@ -54,6 +64,10 @@ def configure(config_values):
             PLUGIN_CONFIG['ignore'] = {type_rmq: []}
             for regex in config_value.children:
                 PLUGIN_CONFIG['ignore'][type_rmq].append(re.compile(regex.values[0]))
+        elif config_value.key == "CollectQueuesStats" and len(config_value.values) > 0:
+            PLUGIN_CONFIG['collectQueuesStats'] = str2bool(config_value.values[0])
+        elif config_value.key == "CollectExchangesStats" and len(config_value.values) > 0:
+            PLUGIN_CONFIG['collectExchangesStats'] = str2bool(config_value.values[0])
 
 
 def init():
@@ -234,27 +248,33 @@ def read(input_data=None):
 
         collectd.debug("Found vhost %s" % vhost['name'])
 
-        for queue in get_info("%s/queues/%s" % (base_url, vhost_name)):
-            queue_name = urllib.quote(queue['name'], '')
-            collectd.debug("Found queue %s" % queue['name'])
-            if not want_to_ignore("queue", queue_name):
-                queue_data = get_info("%s/queues/%s/%s" % (base_url,
-                                                           vhost_name,
-                                                           queue_name))
-                if queue_data is not None:
-                    dispatch_queue_metrics(queue_data, vhost)
-                else:
-                    collectd.warning("Cannot get data back from %s/%s queue" %
-                                     (vhost_name, queue_name))
+        if PLUGIN_CONFIG['collectQueuesStats']:
+            collectd.info("collectQueuesStats")
 
-        for exchange in get_info("%s/exchanges/%s" % (base_url,
-                                                      vhost_name)):
-            exchange_name = urllib.quote(exchange['name'], '')
-            if exchange_name:
-                collectd.debug("Found exchange %s" % exchange['name'])
-                exchange_data = get_info("%s/exchanges/%s/%s" % (
-                    base_url, vhost_name, exchange_name))
-                dispatch_exchange_metrics(exchange_data, vhost)
+            for queue in get_info("%s/queues/%s" % (base_url, vhost_name)):
+                queue_name = urllib.quote(queue['name'], '')
+                collectd.debug("Found queue %s" % queue['name'])
+                if not want_to_ignore("queue", queue_name):
+                    queue_data = get_info("%s/queues/%s/%s" % (base_url,
+                                                               vhost_name,
+                                                               queue_name))
+                    if queue_data is not None:
+                        dispatch_queue_metrics(queue_data, vhost)
+                    else:
+                        collectd.warning("Cannot get data back from %s/%s queue" %
+                                         (vhost_name, queue_name))
+
+        if PLUGIN_CONFIG['collectExchangesStats']:
+            collectd.info("collectExchangesStats")
+
+            for exchange in get_info("%s/exchanges/%s" % (base_url,
+                                                          vhost_name)):
+                exchange_name = urllib.quote(exchange['name'], '')
+                if exchange_name:
+                    collectd.debug("Found exchange %s" % exchange['name'])
+                    exchange_data = get_info("%s/exchanges/%s/%s" % (
+                        base_url, vhost_name, exchange_name))
+                    dispatch_exchange_metrics(exchange_data, vhost)
 
 
 def shutdown():
